@@ -89,7 +89,7 @@ def valid_session_cookie(value: str) -> bool:
 
 def sign_public_media(path: str) -> str:
     secret = os.getenv("MEDIA_SIGNING_KEY") or os.getenv("APP_SESSION_SECRET", "")
-    base = os.getenv("APP_BASE_URL", "").rstrip("/")
+    base = (os.getenv("APP_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
     if not secret or not base.startswith("https://"):
         raise RuntimeError("Set APP_BASE_URL and a media signing secret before publishing hosted media.")
     expires = str(int(time.time()) + 60 * 60 * 24)
@@ -138,7 +138,8 @@ def login(request: Request, response: Response, password: str = Form(...)) -> di
         raise HTTPException(status_code=401, detail="Incorrect workspace password.")
     expiry_text = str(int(time.time()) + 60 * 60 * 24 * 14)
     signature = hmac.new(session_secret.encode(), expiry_text.encode(), "sha256").hexdigest()
-    response.set_cookie("clipforge_session", f"{expiry_text}.{signature}", httponly=True, secure=os.getenv("APP_BASE_URL", "").startswith("https://"), samesite="lax", max_age=60 * 60 * 24 * 14, path="/")
+    public_url = os.getenv("APP_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL", "")
+    response.set_cookie("clipforge_session", f"{expiry_text}.{signature}", httponly=True, secure=public_url.startswith("https://"), samesite="lax", max_age=60 * 60 * 24 * 14, path="/")
     return {"authenticated": True}
 
 
@@ -152,7 +153,7 @@ def logout() -> Response:
 @app.get("/api/auth/session")
 def auth_session(request: Request) -> dict[str, bool]:
     configured = bool(os.getenv("APP_PASSWORD") and len(os.getenv("APP_PASSWORD", "")) >= 12 and os.getenv("APP_PASSWORD") != "replace_with_a_long_private_password" and len(os.getenv("APP_SESSION_SECRET", "")) >= 32 and os.getenv("APP_SESSION_SECRET") != "replace_with_random_secret_at_least_32_chars")
-    return {"authenticated": valid_session_cookie(request.cookies.get("clipforge_session", "")), "configured": configured}
+    return {"authenticated": valid_session_cookie(request.cookies.get("clipforge_session", "")), "configured": configured, "demo_mode": os.getenv("CLIPFORGEAI_DEMO_MODE", "").lower() == "true"}
 
 
 class Project(BaseModel):

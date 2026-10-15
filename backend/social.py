@@ -83,7 +83,7 @@ def encryptor() -> Fernet:
 
 def provider_config(provider: str) -> tuple[str, str, str, str]:
     """Returns client id, secret, callback URL, and scopes for a provider."""
-    base = os.getenv("APP_BASE_URL", "").rstrip("/")
+    base = (os.getenv("APP_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
     if not base.startswith("https://"):
         raise SocialSetupError("Set APP_BASE_URL to your public HTTPS site URL before connecting accounts.")
     key = provider.upper().replace("-", "_")
@@ -259,7 +259,8 @@ def capabilities() -> dict[str, bool]:
         encrypted_storage_ready = True
     except SocialSetupError:
         encrypted_storage_ready = False
-    public_host_ready = os.getenv("APP_BASE_URL", "").startswith("https://")
+    public_base_url = os.getenv("APP_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL", "")
+    public_host_ready = public_base_url.startswith("https://")
     return {provider: public_host_ready and encrypted_storage_ready and bool(os.getenv(f"{provider.upper()}_CLIENT_ID") or (provider in {"instagram", "facebook"} and os.getenv("META_CLIENT_ID"))) and bool(os.getenv(f"{provider.upper()}_CLIENT_SECRET") or (provider in {"instagram", "facebook"} and os.getenv("META_CLIENT_SECRET"))) for provider in PROVIDERS}
 
 

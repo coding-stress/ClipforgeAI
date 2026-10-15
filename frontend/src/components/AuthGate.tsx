@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
-type Session = { authenticated: boolean; configured: boolean };
+type Session = { authenticated: boolean; configured: boolean; demo_mode?: boolean };
 
 function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -27,7 +27,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   if (!session) return <main className="login-page"><section className="login-card"><h1>Clipforge<span>AI</span></h1><p>Connecting to your workspace…</p></section></main>;
   if (!session.configured) return <main className="login-page"><section className="login-card"><h1>Secure your workspace</h1><p>Set <code>APP_PASSWORD</code> and a unique <code>APP_SESSION_SECRET</code> in the backend environment before using this publicly hosted site.</p></section></main>;
   if (!session.authenticated) return <main className="login-page"><form className="login-card" onSubmit={(event) => void login(event)}><h1>Clipforge<span>AI</span></h1><p>Sign in to your private workspace.</p><label>Workspace password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label><button className="primary-button" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>{error && <p className="project-error" role="alert">{error}</p>}</form></main>;
-  return <>{children}</>;
+  return <>{session.demo_mode && <aside className="prototype-banner" role="note">Free prototype: uploads, clips, account links, and scheduled posts can disappear when the service sleeps or restarts. Scheduled publishing is best effort. Best Parts and AI subtitles may use paid OpenAI API credits.</aside>}{children}</>;
 }
 
 export default AuthGate;

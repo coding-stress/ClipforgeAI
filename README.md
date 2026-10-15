@@ -42,7 +42,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 To enable **Best Parts**, open `backend/.env`, replace `your_api_key_here` with your OpenAI API key, and save it. Best Parts sends extracted audio to OpenAI for transcription and sends the transcript to OpenAI for highlight selection. API charges may apply. The original video file is not sent to OpenAI. **Sequence Wise** works without an API key and keeps processing on your computer.
 
-Set `APP_PASSWORD` to a private password with at least 12 characters and `APP_SESSION_SECRET` to a random secret with at least 32 characters before opening the app. For social account connections, generate `TOKEN_ENCRYPTION_KEY` using `backend/.venv/Scripts/python.exe -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Local development can leave `APP_BASE_URL` blank; OAuth connections require the public HTTPS URL after deployment.
+Set `APP_PASSWORD` to a private password with at least 12 characters and `APP_SESSION_SECRET` to a random secret with at least 32 characters before opening the app. For social account connections, generate `TOKEN_ENCRYPTION_KEY` using `backend/.venv/Scripts/python.exe -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Local development can leave `APP_BASE_URL` blank; OAuth connections require a public HTTPS URL.
 
 In the same backend PowerShell window, start the API:
 
@@ -86,4 +86,4 @@ For the hosted HTTPS deployment, OAuth app registration, encrypted token storage
 
 ## Hosted deployment
 
-Build and run with Docker or deploy the included Render blueprint. Hosted scheduled publishing requires a continuously running single instance with the persistent data disk attached. Follow [docs/deployment.md](docs/deployment.md) to configure HTTPS, login secrets, OAuth apps, and provider permissions.
+Build and run with Docker or deploy the included free Render blueprint for a demo. The free service has ephemeral storage and sleeps when idle, so generated files and publishing state can disappear and scheduled posting is best effort. See [docs/deployment.md](docs/deployment.md) for the free setup and the limits to understand before connecting social accounts.
