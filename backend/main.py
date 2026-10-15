@@ -33,7 +33,8 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 CLIP_DIR = DATA_DIR / "clips"
 TRANSCRIPT_DIR = DATA_DIR / "transcripts"
 PROJECTS_FILE = DATA_DIR / "projects.json"
-MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024
+DEMO_MODE = os.getenv("CLIPFORGEAI_DEMO_MODE", "").lower() == "true"
+MAX_VIDEO_SIZE = 100 * 1024 * 1024 if DEMO_MODE else 2 * 1024 * 1024 * 1024
 TRANSCRIPT_CHUNK_SECONDS = 1200
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mpeg", ".mpg"}
 SUPPORTED_URL_HOSTS = {
@@ -153,7 +154,7 @@ def logout() -> Response:
 @app.get("/api/auth/session")
 def auth_session(request: Request) -> dict[str, bool]:
     configured = bool(os.getenv("APP_PASSWORD") and len(os.getenv("APP_PASSWORD", "")) >= 12 and os.getenv("APP_PASSWORD") != "replace_with_a_long_private_password" and len(os.getenv("APP_SESSION_SECRET", "")) >= 32 and os.getenv("APP_SESSION_SECRET") != "replace_with_random_secret_at_least_32_chars")
-    return {"authenticated": valid_session_cookie(request.cookies.get("clipforge_session", "")), "configured": configured, "demo_mode": os.getenv("CLIPFORGEAI_DEMO_MODE", "").lower() == "true"}
+    return {"authenticated": valid_session_cookie(request.cookies.get("clipforge_session", "")), "configured": configured, "demo_mode": DEMO_MODE}
 
 
 class Project(BaseModel):

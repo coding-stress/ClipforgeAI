@@ -20,11 +20,13 @@ function NewProject() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [clips, setClips] = useState<Clip[]>([]);
   const [activeProjectId, setActiveProjectId] = useState("");
   const [openAiConfigured, setOpenAiConfigured] = useState(false);
+  const [maxUploadBytes, setMaxUploadBytes] = useState(2 * 1024 * 1024 * 1024);
   const [apiReachable, setApiReachable] = useState(true);
   const [editValues, setEditValues] = useState<Record<number, { trimStart: string; trimEnd: string; aspectRatio: string }>>({});
   const [editingClip, setEditingClip] = useState<number | null>(null);
@@ -45,6 +47,7 @@ function NewProject() {
         if (!response.ok) throw new Error("API unavailable");
         if (active) {
           setOpenAiConfigured(Boolean(data.openai_configured));
+          if (typeof data.max_upload_bytes === "number") setMaxUploadBytes(data.max_upload_bytes);
           setApiReachable(true);
         }
       })
@@ -75,11 +78,33 @@ function NewProject() {
   }, [clips.length]);
 
   const waitForProject = async (projectId: string): Promise<ProjectResult> => {
+    let transientFailures = 0;
     for (let attempt = 0; attempt < 1800; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      const response = await fetch(`/api/projects/${projectId}`);
-      const project = await readResponse(response) as unknown as ProjectResult;
-      if (!response.ok) throw new Error("Could not read the project's processing status.");
+      await new Promise((resolve) => window.setTimeout(resolve, transientFailures ? Math.min(1000 * 2 ** transientFailures, 8000) : 1000));
+      let response: Response;
+      try {
+        response = await fetch(`/api/projects/${projectId}`);
+      } catch {
+        transientFailures += 1;
+        if (transientFailures <= 5) {
+          setMessage("Reconnecting to the video processor…");
+          continue;
+        }
+        throw new Error("The connection to the video processor was lost. Your project may still appear on the dashboard; refresh and check before uploading again.");
+      }
+      const project = await readResponse(response) as unknown as ProjectResult & { detail?: string };
+      if (!response.ok) {
+        if (response.status >= 500 && transientFailures < 5) {
+          transientFailures += 1;
+          setMessage("The video processor is restarting. Reconnecting…");
+          continue;
+        }
+        if (response.status === 404) {
+          throw new Error("The project record is missing. The free demo may have restarted during processing and cleared its temporary files. Please retry with a shorter video.");
+        }
+        throw new Error(project.detail || `Could not read the project's processing status (HTTP ${response.status}).`);
+      }
+      transientFailures = 0;
       if (project.status === "processing" || project.status === "queued") {
         setMessage(project.progress || "Processing your video…");
       }
@@ -117,8 +142,8 @@ function NewProject() {
       setIsError(true);
       return;
     }
-    if (videoFile && videoFile.size > 2 * 1024 * 1024 * 1024) {
-      setMessage("The maximum video size is 2 GB.");
+    if (videoFile && videoFile.size > maxUploadBytes) {
+      setMessage(`This server accepts videos up to ${Math.floor(maxUploadBytes / (1024 * 1024))} MB. Choose a smaller file.`);
       setIsError(true);
       return;
     }
@@ -134,9 +159,33 @@ function NewProject() {
     setIsSubmitting(true);
     setMessage("Starting your project…");
     try {
-      const response = await fetch("/api/projects", { method: "POST", body: formData });
-      const data = await readResponse(response) as unknown as ProjectResult & { detail?: string };
-      if (!response.ok) throw new Error(data.detail || "Unable to create the project.");
+      if (inputType === "upload") setUploadProgress(0);
+      const data = await new Promise<ProjectResult>((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("POST", "/api/projects");
+        request.withCredentials = true;
+        request.upload.onprogress = (event) => {
+          if (inputType !== "upload" || !event.lengthComputable) return;
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+          setUploadProgress(percent);
+          setMessage(`Uploading video… ${percent}%`);
+        };
+        request.upload.onload = () => { if (inputType === "upload") setMessage("Upload complete. Starting video processing…"); };
+        request.onload = () => {
+          let result: ProjectResult & { detail?: string };
+          try { result = JSON.parse(request.responseText) as ProjectResult & { detail?: string }; }
+          catch { reject(new Error("The server returned an unreadable response. Try a smaller video or retry.")); return; }
+          if (request.status < 200 || request.status >= 300) {
+            reject(new Error(result.detail || `The server could not accept this video (HTTP ${request.status}).`));
+            return;
+          }
+          resolve(result);
+        };
+        request.onerror = () => reject(new Error("The connection ended before the server responded. Try a shorter or smaller video."));
+        request.onabort = () => reject(new Error("The video upload was cancelled."));
+        request.send(formData);
+      });
+      setUploadProgress(null);
       setActiveProjectId(data.id);
       const status = await waitForProject(data.id);
       if (status.status === "completed") {
@@ -152,6 +201,7 @@ function NewProject() {
       setIsError(true);
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -207,7 +257,7 @@ function NewProject() {
           </button>
         </div>
         {inputType === "upload" ? <div className="upload-box">
-          <label htmlFor="video-file">Choose a video file <span>(max 2 GB)</span></label>
+          <label htmlFor="video-file">Choose a video file <span>(max {Math.floor(maxUploadBytes / (1024 * 1024))} MB on this server)</span></label>
           <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/x-msvideo,.m4v,.mpeg,.mpg" disabled={isSubmitting} onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)} />
           {videoFile && <p className="file-selection">Selected: <strong>{videoFile.name}</strong> · {(videoFile.size / (1024 * 1024)).toFixed(1)} MB</p>}
         </div> : <div className="url-box">
@@ -248,7 +298,7 @@ function NewProject() {
       </section>
 
       <button className="generate-button" type="button" onClick={handleGenerate} disabled={isSubmitting || !apiReachable}>
-        {isSubmitting ? "Processing video…" : "✨ Generate clips"}
+        {isSubmitting ? uploadProgress !== null ? `Uploading video… ${uploadProgress}%` : "Processing video…" : "✨ Generate clips"}
       </button>
       {!apiReachable && <p className="project-message error-message" role="alert">The backend API is not reachable. Start the backend server and reload.</p>}
       {message && <p className={`project-message ${isError ? "error-message" : ""}`} role={isError ? "alert" : "status"}>{message}</p>}
